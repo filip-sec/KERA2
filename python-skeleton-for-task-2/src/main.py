@@ -33,8 +33,9 @@ def add_peer(peer):
     if peer.host in const.BANNED_HOSTS:
         return
 
-    # Do not add loopback or multicast addrs
-    # TODO
+    # Do not add loopback or multicast addresses
+    if ipaddress.ip_address(peer.host).is_loopback or ipaddress.ip_address(peer.host).is_multicast:
+        return
 
     peer_db.store_peer(peer, PEERS)
     PEERS.add(peer)
@@ -71,25 +72,25 @@ def mk_peers_msg():
     return {"type": "peers", "peers": pl}
 
 def mk_getobject_msg(objid):
-    pass # TODO
+    return {"type": "getobject", "objectid": objid}
 
 def mk_object_msg(obj_dict):
-    pass # TODO
+    return {"type": "object", "object": obj_dict}
 
 def mk_ihaveobject_msg(objid):
-    pass # TODO
+    return {"type": "ihaveobject", "objectid": objid}
 
 def mk_chaintip_msg(blockid):
-    pass # TODO
+    return {"type": "chaintip", "blockid": blockid}
 
 def mk_mempool_msg(txids):
-    pass # TODO
+    return {"type": "mempool", "txids": txids}
 
 def mk_getchaintip_msg():
-    pass # TODO
+    return {"type": "getchaintip"}
 
 def mk_getmempool_msg():
-    pass # TODO
+    return {"type": "getmempool"}
 
 # parses a message as json. returns decoded message
 def parse_msg(msg_str):
@@ -152,15 +153,31 @@ def validate_hello_msg(msg_dict):
 
 # returns true iff host_str is a valid hostname
 def validate_hostname(host_str):
-    pass # TODO
+    if len(host_str) > 255:
+        return False
+    if host_str[-1] == ".":
+        host_str = host_str[:-1]
+    allowed = re.compile(r"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    return all(allowed.match(x) for x in host_str.split("."))
 
 # returns true iff host_str is a valid ipv4 address
 def validate_ipv4addr(host_str):
-    pass # TODO
+    try:
+        ipaddress.IPv4Address(host_str)
+        return True
+    except ipaddress.AddressValueError:
+        return False
 
 # returns true iff peer_str is a valid peer address
 def validate_peer_str(peer_str):
-    pass # TODO
+    try:
+        host, port = peer_str.rsplit(':', 1)
+        port = int(port)
+        if not (0 <= port <= 65535):
+            return False
+        return validate_hostname(host) or validate_ipv4addr(host)
+    except ValueError:
+        return False
 
 # raise an exception if not valid
 def validate_peers_msg(msg_dict):
@@ -199,35 +216,78 @@ def validate_getpeers_msg(msg_dict):
 
 # raise an exception if not valid
 def validate_getchaintip_msg(msg_dict):
-    pass # TODO
+    if msg_dict['type'] != 'getchaintip':
+        raise ErrorInvalidFormat("Message type is not 'getchaintip'!")
+    validate_allowed_keys(msg_dict, ['type'], 'getchaintip')
 
 # raise an exception if not valid
 def validate_getmempool_msg(msg_dict):
-    pass # TODO
+    if msg_dict['type'] != 'getmempool':
+        raise ErrorInvalidFormat("Message type is not 'getmempool'!")
+    validate_allowed_keys(msg_dict, ['type'], 'getmempool')
 
 # raise an exception if not valid
 def validate_error_msg(msg_dict):
-    pass # TODO
+    if msg_dict['type'] != 'error':
+        raise ErrorInvalidFormat("Message type is not 'error'!")
+    if 'name' not in msg_dict or 'msg' not in msg_dict:
+        raise ErrorInvalidFormat("Message malformed: 'name' or 'msg' is missing!")
+    if not isinstance(msg_dict['name'], str) or not isinstance(msg_dict['msg'], str):
+        raise ErrorInvalidFormat("Message malformed: 'name' or 'msg' is not a string!")
+    validate_allowed_keys(msg_dict, ['type', 'name', 'msg'], 'error')
 
 # raise an exception if not valid
 def validate_ihaveobject_msg(msg_dict):
-    pass # TODO
+    if msg_dict['type'] != 'ihaveobject':
+        raise ErrorInvalidFormat("Message type is not 'ihaveobject'!")
+    if 'objectid' not in msg_dict:
+        raise ErrorInvalidFormat("Message malformed: 'objectid' is missing!")
+    if not isinstance(msg_dict['objectid'], str):
+        raise ErrorInvalidFormat("Message malformed: 'objectid' is not a string!")
+    validate_allowed_keys(msg_dict, ['type', 'objectid'], 'ihaveobject')
 
 # raise an exception if not valid
 def validate_getobject_msg(msg_dict):
-    pass # TODO
+    if msg_dict['type'] != 'getobject':
+        raise ErrorInvalidFormat("Message type is not 'getobject'!")
+    if 'objectid' not in msg_dict:
+        raise ErrorInvalidFormat("Message malformed: 'objectid' is missing!")
+    if not isinstance(msg_dict['objectid'], str):
+        raise ErrorInvalidFormat("Message malformed: 'objectid' is not a string!")
+    validate_allowed_keys(msg_dict, ['type', 'objectid'], 'getobject')
 
 # raise an exception if not valid
 def validate_object_msg(msg_dict):
-    pass # TODO
+    if msg_dict['type'] != 'object':
+        raise ErrorInvalidFormat("Message type is not 'object'!")
+    if 'object' not in msg_dict:
+        raise ErrorInvalidFormat("Message malformed: 'object' is missing!")
+    if not isinstance(msg_dict['object'], dict):
+        raise ErrorInvalidFormat("Message malformed: 'object' is not a dictionary!")
+    validate_allowed_keys(msg_dict, ['type', 'object'], 'object')
 
 # raise an exception if not valid
 def validate_chaintip_msg(msg_dict):
-    pass # todo
-    
+    if msg_dict['type'] != 'chaintip':
+        raise ErrorInvalidFormat("Message type is not 'chaintip'!")
+    if 'blockid' not in msg_dict:
+        raise ErrorInvalidFormat("Message malformed: 'blockid' is missing!")
+    if not isinstance(msg_dict['blockid'], str):
+        raise ErrorInvalidFormat("Message malformed: 'blockid' is not a string!")
+    validate_allowed_keys(msg_dict, ['type', 'blockid'], 'chaintip')
+
 # raise an exception if not valid
 def validate_mempool_msg(msg_dict):
-    pass # todo
+    if msg_dict['type'] != 'mempool':
+        raise ErrorInvalidFormat("Message type is not 'mempool'!")
+    if 'txids' not in msg_dict:
+        raise ErrorInvalidFormat("Message malformed: 'txids' is missing!")
+    if not isinstance(msg_dict['txids'], list):
+        raise ErrorInvalidFormat("Message malformed: 'txids' is not a list!")
+    for txid in msg_dict['txids']:
+        if not isinstance(txid, str):
+            raise ErrorInvalidFormat("Message malformed: 'txid' is not a string!")
+    validate_allowed_keys(msg_dict, ['type', 'txids'], 'mempool')
         
 def validate_msg(msg_dict):
     msg_type = msg_dict['type']
